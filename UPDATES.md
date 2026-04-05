@@ -42,9 +42,9 @@ This file is a chronological log of all work done on the project. Each entry rec
 - Real-world measurements taken before capture (to be used in scale correction, Stage 8).
 
 **Notes:**
-- Capture environment: mug placed on a black notebook on a wooden shelf, against a plain grey-blue wall. Background clutter (bags, desk items) visible to the left of frame. This is noted as a known limitation — background noise is present in the point cloud and will require MeshLab cleanup for Path A. A reshooting session with a cleaner background is planned before running Path B (DA3/HoloScene), where SAM3 masking will handle isolation.
+- Capture environment: mug placed on a black notebook on a wooden shelf, against a plain grey-blue wall. Background clutter (bags, desk items) visible to the left of frame. This is a known limitation — background noise is present in the point cloud and requires MeshLab cleanup for Path A. A reshooting session with a cleaner background is planned before running Path B (DA3/HoloScene), where SAM3 masking will handle isolation.
 - Lighting was slightly dim with a blue cast at time of capture. Noted as a texture quality concern — does not affect geometry reconstruction.
-- Camera orientation was portrait (1440 × 2560 per cameras.txt). Landscape orientation recommended for future reshoots to increase horizontal field of view.
+- Camera orientation was portrait (1440 × 2560 per cameras.txt). Landscape orientation recommended for future reshoots.
 
 ---
 
@@ -53,57 +53,92 @@ This file is a chronological log of all work done on the project. Each entry rec
 **What was done:**
 
 ### FFmpeg Frame Extraction
-- Automated batch script (`colmap_pipeline.bat`) used for frame extraction and COLMAP pipeline execution.
-- Script written, modified and verified against COLMAP 4.0.2:w
-.
-- Initial extraction rate: 0.5 fps (~129 frames). Later adjusted to 2 fps (~517 frames) for denser coverage.
+- Automated batch script (`colmap_pipeline.bat`) used for frame extraction and full COLMAP pipeline execution.
+- Script based on original by polyfjord, modified and verified against COLMAP 4.0.2 (commit d927f7e, 2026-03-18).
+- Initial extraction rate: 0.5 fps (~129 frames). Adjusted to 2 fps (~517 frames) for denser coverage.
 - Frame output: `frames/frame_000001.jpg` through `frame_000517.jpg`, JPEG quality `-qscale:v 2` (near-lossless).
 
 ### Key Script Changes from COLMAP 3.x → 4.0.2
 - `--SiftExtraction.use_gpu` → `--FeatureExtraction.use_gpu` (namespace renamed in 4.0)
 - `--SiftExtraction.max_image_size` → `--FeatureExtraction.max_image_size`
-- `--SequentialMatching.overlap` raised from 15 → 50 (compensates for 2s frame gaps)
-- `--Mapper.min_num_matches` lowered from 15 → 10 (allows sparser frame pairs to register)
-- `--Mapper.ba_use_gpu 1` added (GPU bundle adjustment, M3000M is CUDA-capable)
+- `--SequentialMatching.overlap` raised 15 → 50 (compensates for wider frame gaps at 2fps)
+- `--Mapper.min_num_matches` lowered 15 → 10 (allows sparser frame pairs to register)
+- `--Mapper.ba_use_gpu 1` added (GPU bundle adjustment on M3000M)
 
 ### COLMAP Reconstruction
 - Feature extraction, sequential matching, and incremental mapping completed successfully.
 - **517 cameras registered** out of 517 frames — 100% registration rate.
 - Sparse point cloud and camera poses written to `sparse/0/` in binary format.
 - Model converted to TXT format via `model_converter` (cameras.txt, images.txt, points3D.txt, frames.txt, rigs.txt).
-- Camera model confirmed: `SIMPLE_RADIAL`, 1440×2560, focal length 1838.49px, principal point (720, 1280), radial distortion k1=0.020.
+- Camera model: `SIMPLE_RADIAL`, 1440×2560, focal length 1838.49px, principal point (720, 1280), radial distortion k1=0.020.
 
-### Warnings Encountered During Mapping
+### Warnings Encountered
 - Repeated `levenberg_marquardt_strategy.cc:123] Linear solver failure. Failed to compute a step: Eigen failure. Unable to perform dense Cholesky factorization.` warnings during bundle adjustment.
-- **Assessment:** These are non-fatal warnings produced during early incremental registration when the scene geometry is underconstrained. The LM solver falls back to higher damping and recovers. Warnings ceased as more frames registered. 517/517 registration confirms the mapper completed successfully.
+- **Assessment:** Non-fatal. Produced during early registration when geometry is underconstrained. LM solver recovers via increased damping. 517/517 registration confirms successful completion.
 
 ### PLY Export
-- `points3D.ply` exported from `sparse/0/` using:
+- `points3D.ply` exported via:
   ```
   colmap.exe model_converter --input_path sparse\0 --output_path sparse\0\points3D.ply --output_type PLY
   ```
-- Note: `--output_path` for PLY must be a file path (not a directory). Earlier attempts failed with `ply.cc:381 Check failed: (text_file).is_open()` due to passing a directory path — resolved by appending the filename.
-- Note: COLMAP batch syntax (`%VAR%`, `^` line continuation) is CMD-specific and fails in PowerShell. All COLMAP commands run via CMD or `.bat` files.
+- Earlier attempts failed (`ply.cc:381 Could not open path`) — caused by passing a directory instead of a file path to `--output_path`. Resolved by appending the filename.
+- COLMAP batch syntax (`%VAR%`, `^`) is CMD-only — fails in PowerShell. All commands run via CMD.
 
-### Point Cloud Visualisation (Blender 4.0)
-- `points3D.ply` imported into Blender using the Reconstruction Collection import workflow.
-- 517 animated camera positions visible as expected orbit paths (three elliptical rings corresponding to the three capture passes).
-- Point cloud visualisation: mug body clearly visible as a dense central column. Background noise present — table surface, notebook, wooden shelf edges reconstructed alongside the mug.
-- Vertex shading set to double-sided and colour-by-vertex for clearer visualisation.
-
-### Point Cloud Cleanup (MeshLab — in progress)
-- `points3D.ply` opened in MeshLab.
-- Background scatter (notebook surface, blue stool, shelf edges) being removed manually using Select Outliers and Delete Selected tools.
-- Mug column geometry clearly separable from background noise.
-- Cleanup in progress as of end of session.
+### Visualisation (Blender 4.0)
+- Imported into Blender. Three camera orbit rings visible, corresponding to three capture passes. Mug body clear as dense central column. Background noise present (table, notebook, shelf).
 
 **Blockers:**
-- HPC VPN access still pending. DA3 stage cannot begin until resolved. Escalation recommended if not resolved by 2026-04-03 (to maintain the April 8 deadline).
+- HPC VPN access pending.
+
+---
+
+## 2026-03-29 — Point Cloud Cleanup, COLMAP Path A Sparse Baseline Complete
+
+**What was done:**
+
+### Point Cloud Cleanup (MeshLab)
+- `points3D.ply` opened in MeshLab.
+- Background scatter removed: notebook surface, blue stool, wooden shelf edges, surrounding clutter deleted using Select Outliers and Delete Selected tools.
+- Mug body successfully isolated as a clean central column.
+- Thin base scatter (contact geometry directly under mug) retained as surface reference.
+
+### Observations from Cleaned Point Cloud
+- **Mug body:** Cylindrical form with correct taper clearly reconstructed.
+- **Handle:** Absent from sparse reconstruction — expected. Handle inner arch is a concave surface not well captured by orbiting SfM. Will appear in dense reconstruction and DA3/HoloScene paths.
+- **Top rim:** Slightly thin — expected for circular rim geometry in sparse SfM.
+- **Camera trajectory:** Three clean elliptical orbit rings confirm good capture coverage.
+
+### Export
+- Cleaned point cloud saved as `points3D_clean.ply` in `sparse/0/`.
+- This is the **COLMAP Path A sparse baseline** for the final comparison.
+
+### Documentation
+- `README.md` written — covers full pipeline end-to-end, all 10 stages, comparison table, evaluation metrics, hardware, repo structure, and references.
+- `UPDATES.md` started — this file. Both ready to push to repo.
+
+**Status at end of session:**
+
+| Stage | Status |
+|---|---|
+| Video capture | ✅ Complete |
+| FFmpeg extraction | ✅ Complete (517 frames at 2fps) |
+| COLMAP sparse reconstruction | ✅ Complete (517/517 cameras registered) |
+| Point cloud cleanup | ✅ Complete (`points3D_clean.ply`) |
+| COLMAP dense reconstruction | Pending reshoot |
+| DA3 (Path B) | 🔴 Blocked — HPC VPN pending |
+| SAM3 + HoloScene | ⬜ Not started |
+| Scale correction + physics params | ⬜ Not started |
+| Isaac Sim validation | ⬜ Not started |
+| Comparison + final docs | ⬜ Not started |
 
 **Next session targets:**
-- Complete MeshLab point cloud cleanup and export clean mug-only `.ply`.
-- Plan and execute reshoot with cleaner capture environment (landscape orientation, no background clutter, daylight lighting).
-- Await HPC documentation to prepare DA3 job submission scripts.
+- Reshoot mug (landscape orientation, daylight, clean background)
+- Push README.md and UPDATES.md to repo
+- Obtain HPC VPN access and Libra documentation
+- Prepare DA3 job submission script for HPC
+
+**Blockers:**
+- HPC VPN access still pending. If unresolved by 2026-04-03, escalate to professor — April 8 deadline at risk.
 
 ---
 
