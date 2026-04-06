@@ -2,19 +2,19 @@
 # ============================================================
 #  SLURM Job Script — DA3 (Depth Anything 3)
 #  SLU Libra HPC | Partition: machinelearning | GPU: H100 NVL
-#  Runtime: conda environment (no Singularity)
+#  Runtime: conda environment da3_env (no Singularity)
+#
+#  Working directory: ~/video2sim-conda/
+#  Frames:  ~/video2sim-conda/data/input/custom/plant/images/
+#  Output:  ~/video2sim-conda/data/input/custom/plant/transforms.json
 #
 #  Pre-requisites:
-#    1. conda env 'da3' created and DA3 installed (see README)
-#    2. HF_TOKEN exported in shell before sbatch:
-#       export HF_TOKEN=hf_xxx && sbatch run_da3.sh
+#    HF_TOKEN exported before running sbatch:
+#    export HF_TOKEN=hf_xxx && sbatch run_da3.sh
 #
 #  Monitor:
 #    squeue -u $USER
 #    tail -f da3_plant_<jobid>.log
-#
-#  Output:
-#    ~/video2sim/data/input/custom/plant/transforms.json
 # ============================================================
 
 #SBATCH --job-name=da3_plant
@@ -36,33 +36,40 @@ module load anaconda/3
 module load cuda12.8/toolkit/12.8.1
 
 # Activate conda environment
-source activate da3
+source activate da3_env
 
-# Confirm GPU visibility
+# Confirm GPU is visible
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 # Confirm frames exist
-FRAME_COUNT=$(ls ~/video2sim/data/input/custom/plant/images/ | wc -l)
+FRAME_COUNT=$(ls ~/video2sim-conda/data/input/custom/plant/images/ | wc -l)
 echo "Frames found: ${FRAME_COUNT}"
 if [ "$FRAME_COUNT" -eq 0 ]; then
     echo "ERROR: No frames found. Exiting."
     exit 1
 fi
 
-# Create output directories
-mkdir -p ~/video2sim/data/output/custom/plant/da3_out
-mkdir -p ~/video2sim/data/cache/da3
+# Create output and cache directories
+mkdir -p ~/video2sim-conda/data/output/custom/plant/da3_out
+mkdir -p ~/video2sim-conda/data/cache/da3
 
 # Set environment variables
 export SCENE_NAME=plant
-export DATA_ROOT=~/video2sim/data/input/custom
-export OUTPUT_ROOT=~/video2sim/data/output/custom
+export DATA_ROOT=/home/crajashekhar/video2sim-conda/data/input/custom
+export OUTPUT_ROOT=/home/crajashekhar/video2sim-conda/data/output/custom
 export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
-export HF_HOME=~/video2sim/data/cache/da3
+export HF_HOME=/home/crajashekhar/video2sim-conda/data/cache/da3
+export HF_TOKEN="${HF_TOKEN}"
+
+# Confirm env vars are set
+echo "SCENE_NAME:  ${SCENE_NAME}"
+echo "DATA_ROOT:   ${DATA_ROOT}"
+echo "OUTPUT_ROOT: ${OUTPUT_ROOT}"
+echo "HF_TOKEN set: $([ -n "$HF_TOKEN" ] && echo YES || echo NO)"
 
 # Run DA3
 echo "Starting DA3 inference..."
-python3 ~/video2sim/repo/modules/da3/da3_process.py
+python3 /home/crajashekhar/video2sim-conda/repo/modules/da3/da3_process.py
 
 EXIT_CODE=$?
 echo "============================================"
@@ -72,9 +79,10 @@ echo "============================================"
 
 if [ $EXIT_CODE -eq 0 ]; then
     echo "SUCCESS: transforms.json written to:"
-    echo "  ~/video2sim/data/input/custom/plant/transforms.json"
+    echo "  ~/video2sim-conda/data/input/custom/plant/transforms.json"
 else
     echo "FAILED: Check log above for errors."
+    echo "Tip: tail -f da3_plant_${SLURM_JOB_ID}.log"
 fi
 
 exit $EXIT_CODE
